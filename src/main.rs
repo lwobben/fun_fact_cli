@@ -8,27 +8,29 @@ use crossterm::{
 };
 use std::io::{Write, stdout, Stdout};
 
+
+const MODEL: &'static str = "gpt-3.5-turbo";
+const SYSTEM_MESSAGE: &'static str = "You are a helpful and fun assistant";
+const FIRST_INPUT: &'static str = "Hey OpenAI, can you tell a random, but interesting, fun fact?";
+
+
 #[tokio::main]
 async fn main() {
-    // get openai key
-    let openai_key = "OPENAI_KEY";
-    let key = env::var(openai_key).unwrap();
+    let openai_key = env::var("OPENAI_KEY").expect("\nEnv var 'OPENAI_KEY' is not set, please set it with your OpenAI API openai_key!\n\n");
 
-    // request details
-    let client = Client::new();
-    let mut headers: HeaderMap = HeaderMap::new();
-    let header_string = format!("Bearer {}", key).parse::<String>().unwrap();
-    let header_value = HeaderValue::from_str(&header_string).unwrap();
-    headers.insert(AUTHORIZATION, header_value);
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-
-    let mut request_body = RequestBodyOpenAI {
-        model: String::from("gpt-3.5-turbo"),
-        messages: vec![Message{role:"system".to_owned(), content:"You are a helpful assistant".to_owned()}],
+    let mut request_body = OpenAIRequestBody {
+        model: String::from(MODEL),
+        messages: vec![Message{role: "system".to_owned(), content: SYSTEM_MESSAGE.to_owned()}],
     };
-    let url = Url::parse(&format!("{}", "https://api.openai.com/v1/chat/completions")).unwrap();
+    let api_url = Url::parse(&format!("{}", "https://api.openai.com/v1/chat/completions")).unwrap();
 
-    // terminal UI
+    let mut headers: HeaderMap = HeaderMap::new();
+    let header_string = format!("Bearer {}", openai_key).parse::<String>().unwrap();
+    let header = HeaderValue::from_str(&header_string).unwrap();
+    headers.insert(AUTHORIZATION, header);
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let client = Client::new();
+
     let mut stdout: Stdout = stdout();
     terminal::enable_raw_mode().unwrap();
     let mut user_input: String = String::new();
@@ -39,14 +41,12 @@ async fn main() {
     'chat: loop {
         
         if count == 0 {
-            let first_input = String::from("Hey OpenAI, can you tell a random, but interesting, fun fact?");
-            println!("Terminal: {}", first_input);
+            println!("Terminal: {}", FIRST_INPUT.to_string());
 
-            // send OpenAI request and process message (to do: move to function)
-            request_body.messages.push(Message { role: "user".to_owned(), content: first_input });           
+            request_body.messages.push(Message { role: "user".to_owned(), content: FIRST_INPUT.to_string() });           
             let request_body_string: String = serde_json::to_string(&request_body).unwrap();
             let res = client
-                                        .post(url.clone())
+                                        .post(api_url.clone())
                                         .headers(headers.clone())
                                         .body(request_body_string)
                                         .send().await.unwrap();
@@ -54,7 +54,7 @@ async fn main() {
             let body = res.text().await.unwrap();
             let v: Value = serde_json::from_str(&body).unwrap();
             let assistant_response = v["choices"][0]["message"]["content"].as_str().unwrap().to_owned();
-            request_body.messages.push(Message { role: "assistant".to_owned(), content: assistant_response.clone() });
+            request_body.messages.push(Message {role: "assistant".to_owned(), content: assistant_response.clone()});
 
             let mut message = String::from("\n\rOpenAI assistant: ");
             message.push_str( &assistant_response);
@@ -74,11 +74,10 @@ async fn main() {
                     user_input.push(c);
                 },
                 KeyCode::Enter => {  
-                    // send OpenAI request and process message (to do: move to function)  
-                    request_body.messages.push(Message { role: "user".to_owned(), content: user_input.clone() });           
+                    request_body.messages.push(Message {role: "user".to_owned(), content: user_input.clone()});           
                     let request_body_string: String = serde_json::to_string(&request_body).unwrap();
                     let res = client
-                                                .post(url.clone())
+                                                .post(api_url.clone())
                                                 .headers(headers.clone())
                                                 .body(request_body_string)
                                                 .send().await.unwrap();
@@ -86,7 +85,7 @@ async fn main() {
                     let body = res.text().await.unwrap();
                     let v: Value = serde_json::from_str(&body).unwrap();
                     let assistant_response = v["choices"][0]["message"]["content"].as_str().unwrap().to_owned();
-                    request_body.messages.push(Message { role: "assistant".to_owned(), content: assistant_response.clone() });
+                    request_body.messages.push(Message {role: "assistant".to_owned(), content: assistant_response.clone()});
 
                     let mut message = String::from("\n\n\rOpenAI Assistant: ");
                     message.push_str( &assistant_response);
@@ -118,10 +117,9 @@ async fn main() {
 }
 
 
-// define custom structs
 use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
-struct RequestBodyOpenAI {
+struct OpenAIRequestBody {
     model: String,
     messages: Vec<Message>,
 }
